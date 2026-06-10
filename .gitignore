@@ -1,0 +1,14 @@
+.venv/
+.env
+results/
+data/variants/
+**/__pycache__/
+*.log
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# never track the paper folder even if nested by mistake
+../smr-paper/
+smr-paper/

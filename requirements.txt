@@ -1,0 +1,12 @@
+openai>=1.100.0
+python-dotenv>=1.1.0
+transformers>=4.50.0
+torch>=2.7.0
+llm-guard>=0.3.16
+pandas>=2.2.0
+numpy>=2.2.0
+matplotlib>=3.10.0
+seaborn>=0.13.0
+tqdm>=4.67.0
+tenacity>=9.0.0
+langdetect>=1.0.9
