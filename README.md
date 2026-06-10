@@ -62,6 +62,17 @@ python src\audit_variants.py --dedupe
 python src\make_phase2_artifacts.py
 ```
 
+## Phase 3 Guardrail Adapter Smoke Test
+
+Phase 3 adapters share the `Guardrail.verdict(text)` shape and can be smoke-tested on one benign and one malicious example:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\smoke_guardrails.py --guardrails all
+```
+
+This writes the paper-facing sanity table to `..\smr-paper\tables\baseline.csv`.
+
 ## Git Hygiene
 
 Commit reproducible code only. Do not commit `.env`, `results/`, `data/variants/`, large model caches, or anything from `smr-paper/`.
