@@ -73,6 +73,18 @@ python src\smoke_guardrails.py --guardrails all
 
 This writes the paper-facing sanity table to `..\smr-paper\tables\baseline.csv`.
 
+## Phase 4 Access-Control Mini-App
+
+Phase 4 provides the SMR-5 role-differential mini-app and smoke scenarios:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\smoke_access_app.py --limit 3
+python src\make_phase4_artifacts.py
+```
+
+The smoke run writes `..\smr-paper\tables\access_control_smoke.csv`; the paper example is saved as `..\smr-paper\figures\access_control_example.png`.
+
 ## Git Hygiene
 
 Commit reproducible code only. Do not commit `.env`, `results/`, `data/variants/`, large model caches, or anything from `smr-paper/`.
