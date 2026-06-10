@@ -168,11 +168,15 @@ def run_guardrail_tasks(
     return completed
 
 
-def estimate_paid_cost(variants: list[dict[str, object]]) -> dict[str, object]:
-    paid_calls = len(variants) * REPETITIONS["llm_judge"]
+def estimate_paid_cost(variants: list[dict[str, object]], guardrails: list[str]) -> dict[str, object]:
+    paid_calls = (
+        len(variants) * REPETITIONS["llm_judge"]
+        if "llm_judge" in guardrails
+        else 0
+    )
     static_prompt_chars = 820
     input_chars = sum(len(str(variant.get("text", ""))) + static_prompt_chars for variant in variants)
-    input_tokens = int(input_chars / 4) * REPETITIONS["llm_judge"]
+    input_tokens = int(input_chars / 4) * REPETITIONS["llm_judge"] if paid_calls else 0
     output_tokens = paid_calls * 90
     cost = (input_tokens / 1_000_000) * PRICE_INPUT_PER_MTOK + (output_tokens / 1_000_000) * PRICE_OUTPUT_PER_MTOK
     return {
@@ -260,7 +264,7 @@ def main() -> None:
     started = time.perf_counter()
     guardrails = parse_guardrails(args.guardrails)
     variants = load_variants(args.variants, args.limit_variants)
-    estimate = estimate_paid_cost(variants)
+    estimate = estimate_paid_cost(variants, guardrails)
     print("cost_estimate=" + json.dumps(estimate, ensure_ascii=True))
     if args.estimate_only:
         return
