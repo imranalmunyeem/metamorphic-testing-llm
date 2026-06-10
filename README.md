@@ -49,6 +49,19 @@ python src\build_seeds.py
 
 This writes `data/seeds/seeds.jsonl` and the redacted paper-facing sample table at `..\smr-paper\tables\seed_sample.csv`.
 
+## Phase 2 Variant Generation
+
+Phase 2 generates SMR variants into the gitignored `data/variants/` folder and writes paper-facing artifacts into `..\smr-paper\`.
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\generate_variants.py --limit-invariance-seeds 5 --output data\variants\smoke_variants.jsonl --rejects-output data\variants\smoke_rejects.jsonl --summary-output data\variants\smoke_run_summary.json --force
+python src\generate_variants.py
+python src\repair_variants.py
+python src\audit_variants.py --dedupe
+python src\make_phase2_artifacts.py
+```
+
 ## Git Hygiene
 
 Commit reproducible code only. Do not commit `.env`, `results/`, `data/variants/`, large model caches, or anything from `smr-paper/`.

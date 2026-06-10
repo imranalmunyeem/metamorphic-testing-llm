@@ -11,3 +11,4 @@ tqdm>=4.67.0
 tenacity>=9.0.0
 langdetect>=1.0.9
 datasets>=3.0.0
+json-repair>=0.44.1
