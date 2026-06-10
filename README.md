@@ -38,6 +38,17 @@ python test_key.py
 - Budget cap: `MAX_RUN_USD=20.00` unless overridden.
 - Paper output: `PAPER_DIR`, defaulting to the sibling `smr-paper/` folder.
 
+## Phase 1 Seed Corpus
+
+The normalized seed corpus is generated from public Hugging Face datasets plus small curated SMR-5/SMR-6 scenario sets:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\build_seeds.py
+```
+
+This writes `data/seeds/seeds.jsonl` and the redacted paper-facing sample table at `..\smr-paper\tables\seed_sample.csv`.
+
 ## Git Hygiene
 
 Commit reproducible code only. Do not commit `.env`, `results/`, `data/variants/`, large model caches, or anything from `smr-paper/`.
