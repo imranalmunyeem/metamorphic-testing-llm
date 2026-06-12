@@ -85,6 +85,86 @@ python src\make_phase4_artifacts.py
 
 The smoke run writes `..\smr-paper\tables\access_control_smoke.csv`; the paper example is saved as `..\smr-paper\figures\access_control_example.png`.
 
+## Phase 5 Experiment Runner
+
+Phase 5 runs every generated variant against the configured guardrails, appending each completed verdict to `results\raw\results.jsonl`. The runner is resumable: on restart it skips completed `(variant_id, guardrail, repetition)` keys.
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\runner.py --limit-variants 10 --output results\raw\smoke_results.jsonl --summary-output results\raw\smoke_runner_summary.json --paper-summary ..\smr-paper\snapshots\phase5_smoke_runner_summary.json --paper-table ..\smr-paper\tables\runner_smoke_summary.csv --max-results 20 --workers 2 --force
+python src\runner.py --limit-variants 10 --output results\raw\smoke_results.jsonl --summary-output results\raw\smoke_runner_summary.json --paper-summary ..\smr-paper\snapshots\phase5_smoke_runner_summary.json --paper-table ..\smr-paper\tables\runner_smoke_summary.csv --workers 2
+python src\runner.py --estimate-only --workers 4
+python src\runner.py --workers 4
+```
+
+For accounts with strict Moderation API quota windows, resume only that guardrail with smaller batches:
+
+```powershell
+python src\runner.py --guardrails openai_moderation --workers 1 --moderation-batch-size 8 --moderation-sleep-seconds 60 --moderation-rate-limit-cooldown-seconds 300 --moderation-max-rate-limit-stalls 24
+```
+
+The runner writes the paper-facing progress snapshot to `..\smr-paper\snapshots\phase5_runner_summary.json` and summary table to `..\smr-paper\tables\runner_summary.csv`.
+
+## Phase 6 Metrics
+
+Phase 6 scores the raw JSONL verdict ledger and writes reproducible CSV tables to `results\tables\`. The same tables are copied to `..\smr-paper\tables\` for manuscript use.
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\metrics.py --input results\raw\smoke_results.jsonl --expected-from-results --output-dir results\tables\smoke --skip-paper-copy --bootstrap-iterations 200
+python src\metrics.py --input results\raw\results.jsonl --variants data\variants\variants.jsonl --output-dir results\tables --paper-dir ..\smr-paper\tables --bootstrap-iterations 2000
+```
+
+The headline paper table is `..\smr-paper\tables\msir_by_guardrail_smr.csv`.
+
+## Phase 7 Figures
+
+Phase 7 regenerates all paper-facing figures and chart-support tables from saved Phase 6 outputs:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\make_figures.py
+```
+
+Figures are written as PNG and PDF pairs in `..\smr-paper\figures\`. The generated figure manifest is `..\smr-paper\tables\phase7_figure_manifest.csv`.
+
+## Phase 8 Mitigation
+
+Phase 8 canonicalises the variant corpus, reruns the guardrails on the canonicalised inputs, recomputes metrics, and refreshes the before/after mitigation figure:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python src\canonicalize.py --estimate-only
+python src\canonicalize.py
+python src\runner.py --variants data\variants\variants_canonicalized.jsonl --output results\raw\smoke_mitigated_results.jsonl --summary-output results\raw\smoke_mitigated_runner_summary.json --paper-summary ..\smr-paper\snapshots\phase8_smoke_runner_summary.json --paper-table ..\smr-paper\tables\runner_mitigated_smoke_summary.csv --limit-variants 10 --max-results 20 --workers 2 --force
+python src\runner.py --variants data\variants\variants_canonicalized.jsonl --output results\raw\smoke_mitigated_results.jsonl --summary-output results\raw\smoke_mitigated_runner_summary.json --paper-summary ..\smr-paper\snapshots\phase8_smoke_runner_summary.json --paper-table ..\smr-paper\tables\runner_mitigated_smoke_summary.csv --limit-variants 10 --workers 2
+python src\runner.py --variants data\variants\variants_canonicalized.jsonl --output results\raw\results_mitigated.jsonl --summary-output results\raw\runner_mitigated_summary.json --paper-summary ..\smr-paper\snapshots\phase8_runner_summary.json --paper-table ..\smr-paper\tables\runner_mitigated_summary.csv --estimate-only --workers 4
+python src\metrics.py --input results\raw\results_mitigated.jsonl --variants data\variants\variants_canonicalized.jsonl --output-dir results\tables_mitigated --paper-dir ..\smr-paper\tables\mitigated --bootstrap-iterations 2000
+python src\make_figures.py --mitigated-tables-dir results\tables_mitigated
+```
+
+The canonicalised variants and mitigated raw results are ignored because they are reproducible. The paper-facing before/after outputs are `..\smr-paper\figures\mitigation.png` and `..\smr-paper\tables\mitigation.csv`.
+
+## Phase 9 Reproducibility Gate
+
+Phase 9 adds the one-command reproduction driver, freezes the paper run snapshot, and checks that every required paper artifact exists:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python reproduce.py --profile smoke --dry-run
+python reproduce.py --profile full --dry-run
+python src\make_run_snapshot.py
+python src\check_paper_artifacts.py
+```
+
+The full reproduction command is:
+
+```powershell
+python reproduce.py --profile full --workers 4
+```
+
+The snapshot is written to `..\smr-paper\snapshots\run_snapshot.json`; the completeness report is `..\smr-paper\tables\paper_data_completeness.csv`.
+
 ## Git Hygiene
 
 Commit reproducible code only. Do not commit `.env`, `results/`, `data/variants/`, large model caches, or anything from `smr-paper/`.
