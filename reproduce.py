@@ -89,7 +89,7 @@ def run_full(args: argparse.Namespace) -> None:
     run([PYTHON, "src\\audit_variants.py", "--dedupe"], args.dry_run)
     run([PYTHON, "src\\make_phase2_artifacts.py"], args.dry_run)
     run([PYTHON, "src\\smoke_guardrails.py", "--guardrails", "all"], args.dry_run)
-    run([PYTHON, "src\\smoke_access_app.py", "--limit", "3"], args.dry_run)
+    run([PYTHON, "src\\smoke_access_app.py"], args.dry_run)
     run([PYTHON, "src\\make_phase4_artifacts.py"], args.dry_run)
     run([PYTHON, "src\\runner.py", "--estimate-only", "--workers", str(args.workers)], args.dry_run)
     run([PYTHON, "src\\runner.py", "--workers", str(args.workers)], args.dry_run)
@@ -112,6 +112,33 @@ def run_full(args: argparse.Namespace) -> None:
     )
     run([PYTHON, "src\\canonicalize.py", "--estimate-only"], args.dry_run)
     run([PYTHON, "src\\canonicalize.py"], args.dry_run)
+    run(
+        [
+            PYTHON,
+            "src\\canonicalize.py",
+            "--mode",
+            "full",
+            "--skip-translation",
+            "--output",
+            "data\\variants\\variants_canonicalized_deterministic.jsonl",
+            "--summary",
+            "data\\variants\\canonicalization_deterministic_summary.json",
+            "--paper-summary",
+            "..\\smr-paper\\snapshots\\phase8_canonicalization_deterministic_summary.json",
+        ],
+        args.dry_run,
+    )
+    run(
+        [
+            PYTHON,
+            "src\\reuse_identical_results.py",
+            "--ablation-variants",
+            "data\\variants\\variants_canonicalized_deterministic.jsonl",
+            "--ablation-results",
+            "results\\raw\\results_ablation_deterministic.jsonl",
+        ],
+        args.dry_run,
+    )
     run(
         [
             PYTHON,
@@ -168,6 +195,62 @@ def run_full(args: argparse.Namespace) -> None:
         ],
         args.dry_run,
     )
+    run(
+        [
+            PYTHON,
+            "src\\runner.py",
+            "--variants",
+            "data\\variants\\variants_canonicalized_deterministic.jsonl",
+            "--output",
+            "results\\raw\\results_ablation_deterministic.jsonl",
+            "--summary-output",
+            "results\\raw\\runner_ablation_deterministic_summary.json",
+            "--paper-summary",
+            "..\\smr-paper\\snapshots\\ablation_deterministic_runner_summary.json",
+            "--paper-table",
+            "..\\smr-paper\\tables\\runner_ablation_deterministic_summary.csv",
+            "--estimate-only",
+            "--workers",
+            str(args.workers),
+        ],
+        args.dry_run,
+    )
+    run(
+        [
+            PYTHON,
+            "src\\runner.py",
+            "--variants",
+            "data\\variants\\variants_canonicalized_deterministic.jsonl",
+            "--output",
+            "results\\raw\\results_ablation_deterministic.jsonl",
+            "--summary-output",
+            "results\\raw\\runner_ablation_deterministic_summary.json",
+            "--paper-summary",
+            "..\\smr-paper\\snapshots\\ablation_deterministic_runner_summary.json",
+            "--paper-table",
+            "..\\smr-paper\\tables\\runner_ablation_deterministic_summary.csv",
+            "--workers",
+            str(args.workers),
+        ],
+        args.dry_run,
+    )
+    run(
+        [
+            PYTHON,
+            "src\\metrics.py",
+            "--input",
+            "results\\raw\\results_ablation_deterministic.jsonl",
+            "--variants",
+            "data\\variants\\variants_canonicalized_deterministic.jsonl",
+            "--output-dir",
+            "results\\tables_ablation_deterministic",
+            "--paper-dir",
+            "..\\smr-paper\\tables\\ablation_deterministic",
+            "--bootstrap-iterations",
+            str(args.bootstrap_iterations),
+        ],
+        args.dry_run,
+    )
     run([PYTHON, "src\\make_seed_baseline.py"], args.dry_run)
     run(
         [
@@ -210,6 +293,21 @@ def run_full(args: argparse.Namespace) -> None:
             "--seed-results",
             "results\\raw\\seed_baseline_results.jsonl",
             "--variant-results",
+            "results\\raw\\results_ablation_deterministic.jsonl",
+            "--output-dir",
+            "results\\tables_ablation_deterministic",
+            "--paper-dir",
+            "..\\smr-paper\\tables\\ablation_deterministic",
+        ],
+        args.dry_run,
+    )
+    run(
+        [
+            PYTHON,
+            "src\\compute_mcnemar.py",
+            "--seed-results",
+            "results\\raw\\seed_baseline_results.jsonl",
+            "--variant-results",
             "results\\raw\\results_mitigated.jsonl",
             "--output-dir",
             "results\\tables_mitigated",
@@ -240,6 +338,23 @@ def run_full(args: argparse.Namespace) -> None:
             PYTHON,
             "src\\metrics.py",
             "--input",
+            "results\\raw\\results_ablation_deterministic.jsonl",
+            "--variants",
+            "data\\variants\\variants_canonicalized_deterministic.jsonl",
+            "--output-dir",
+            "results\\tables_ablation_deterministic",
+            "--paper-dir",
+            "..\\smr-paper\\tables\\ablation_deterministic",
+            "--bootstrap-iterations",
+            str(args.bootstrap_iterations),
+        ],
+        args.dry_run,
+    )
+    run(
+        [
+            PYTHON,
+            "src\\metrics.py",
+            "--input",
             "results\\raw\\results_mitigated.jsonl",
             "--variants",
             "data\\variants\\variants_canonicalized.jsonl",
@@ -253,6 +368,7 @@ def run_full(args: argparse.Namespace) -> None:
         args.dry_run,
     )
     run([PYTHON, "src\\make_figures.py", "--mitigated-tables-dir", "results\\tables_mitigated"], args.dry_run)
+    run([PYTHON, "src\\make_ablation_summary.py"], args.dry_run)
     run([PYTHON, "src\\make_experiment_details.py"], args.dry_run)
     run([PYTHON, "src\\make_run_snapshot.py"], args.dry_run)
     run([PYTHON, "src\\check_paper_artifacts.py"], args.dry_run)

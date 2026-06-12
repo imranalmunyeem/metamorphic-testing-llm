@@ -272,50 +272,61 @@ def translate_to_english(client: OpenAI, text: str, source_language: str) -> str
     return response.output_text.strip()
 
 
-def canonicalize_deterministic(text: str, transformation: str) -> tuple[str, list[str]]:
+def canonicalize_deterministic(
+    text: str,
+    transformation: str,
+    mode: str = "full",
+) -> tuple[str, list[str]]:
     actions: list[str] = []
-    current = unicodedata.normalize("NFKC", text)
-    if current != text:
-        actions.append("unicode_nfkc")
+    current = text
 
-    current, extra = strip_wrappers(current)
-    actions.extend(extra)
+    if mode in {"full", "obfuscation_only"}:
+        normalized = unicodedata.normalize("NFKC", current)
+        if normalized != current:
+            actions.append("unicode_nfkc")
+        current = normalized
 
-    current, extra = normalize_payload_suffix(current)
-    actions.extend(extra)
-
-    unescaped = html.unescape(current)
-    if unescaped != current:
-        current = unescaped
-        actions.append("html_unescape")
-
-    unquoted = unquote(current)
-    if unquoted != current:
-        current = unquoted
-        actions.append("url_decode")
-
-    current, extra = decode_base64_segments(current)
-    actions.extend(extra)
-
-    current, extra = decode_hex_segments(current)
-    actions.extend(extra)
-
-    if transformation == "rot13":
-        current = codecs.decode(current, "rot_13")
-        actions.append("decode_rot13")
-
-    if transformation == "spaced_characters":
-        current, extra = unspace_characters(current)
+    if mode in {"full", "unwrap_only"}:
+        current, extra = strip_wrappers(current)
         actions.extend(extra)
 
-    transliterated = current.translate(CYRILLIC_HOMOGLYPHS)
-    if transliterated != current:
-        current = transliterated
-        actions.append("transliterate_homoglyphs")
+    if mode in {"full", "decode_only"}:
+        current, extra = normalize_payload_suffix(current)
+        actions.extend(extra)
 
-    if transformation == "leetspeak":
-        current = current.translate(LEETSPEAK)
-        actions.append("normalize_leetspeak")
+        unescaped = html.unescape(current)
+        if unescaped != current:
+            current = unescaped
+            actions.append("html_unescape")
+
+        unquoted = unquote(current)
+        if unquoted != current:
+            current = unquoted
+            actions.append("url_decode")
+
+        current, extra = decode_base64_segments(current)
+        actions.extend(extra)
+
+        current, extra = decode_hex_segments(current)
+        actions.extend(extra)
+
+        if transformation == "rot13":
+            current = codecs.decode(current, "rot_13")
+            actions.append("decode_rot13")
+
+        if transformation == "spaced_characters":
+            current, extra = unspace_characters(current)
+            actions.extend(extra)
+
+    if mode in {"full", "obfuscation_only"}:
+        transliterated = current.translate(CYRILLIC_HOMOGLYPHS)
+        if transliterated != current:
+            current = transliterated
+            actions.append("transliterate_homoglyphs")
+
+        if transformation == "leetspeak":
+            current = current.translate(LEETSPEAK)
+            actions.append("normalize_leetspeak")
 
     compacted = compact_spaces(current)
     if compacted != current:
@@ -358,6 +369,7 @@ def canonicalize_rows(
     cache_path: Path,
     translate: bool,
     max_translations: int | None,
+    mode: str,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     client: OpenAI | None = None
     if translate:
@@ -376,7 +388,7 @@ def canonicalize_rows(
     for index, row in enumerate(rows, 1):
         original_text = str(row.get("text", ""))
         transformation = str(row.get("transformation", ""))
-        canonical_text, actions = canonicalize_deterministic(original_text, transformation)
+        canonical_text, actions = canonicalize_deterministic(original_text, transformation, mode=mode)
         language = detect_language(canonical_text)
         variant_id = str(row.get("variant_id"))
 
@@ -407,6 +419,7 @@ def canonicalize_rows(
         out["text"] = canonical_text
         out["original_text"] = original_text
         out["canonicalization"] = {
+            "mode": mode,
             "actions": actions,
             "detected_language": language,
             "changed": canonical_text != original_text,
@@ -441,6 +454,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-translations", type=int, default=None)
     parser.add_argument("--estimate-only", action="store_true")
     parser.add_argument("--skip-translation", action="store_true")
+    parser.add_argument(
+        "--mode",
+        choices=["full", "decode_only", "unwrap_only", "obfuscation_only", "translate_only"],
+        default="full",
+        help="Canonicalization component mode for ablation studies.",
+    )
     return parser.parse_args()
 
 
@@ -472,6 +491,7 @@ def main() -> None:
         args.translation_cache,
         translate=not args.skip_translation,
         max_translations=args.max_translations,
+        mode=args.mode,
     )
     write_jsonl(args.output, canonical_rows)
     summary = {
@@ -479,6 +499,7 @@ def main() -> None:
         "output": str(args.output),
         "translation_cache": str(args.translation_cache),
         "model": OPENAI_GENERATION_MODEL,
+        "mode": args.mode,
         "cost_estimate": estimate,
         **stats,
     }

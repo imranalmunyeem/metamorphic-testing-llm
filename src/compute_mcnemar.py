@@ -78,12 +78,17 @@ def mcnemar_chi_square(seed_block_variant_allow: int, seed_allow_variant_block: 
     return ((abs(seed_block_variant_allow - seed_allow_variant_block) - 1) ** 2) / discordant
 
 
+def compact_p_value(value: float) -> float:
+    return float(f"{value:.12g}")
+
+
 def summarize_group(name: tuple[str, ...], rows: list[dict[str, object]], fields: list[str]) -> dict[str, object]:
     both_block = sum(1 for row in rows if row["seed_blocked"] and row["variant_blocked"])
     both_allow = sum(1 for row in rows if not row["seed_blocked"] and not row["variant_blocked"])
     seed_block_variant_allow = sum(1 for row in rows if row["seed_blocked"] and not row["variant_blocked"])
     seed_allow_variant_block = sum(1 for row in rows if not row["seed_blocked"] and row["variant_blocked"])
     discordant = seed_block_variant_allow + seed_allow_variant_block
+    exact_p = exact_mcnemar_p_value(seed_block_variant_allow, seed_allow_variant_block)
     summary: dict[str, object] = {
         "paired_variants": len(rows),
         "both_block": both_block,
@@ -91,14 +96,14 @@ def summarize_group(name: tuple[str, ...], rows: list[dict[str, object]], fields
         "seed_block_variant_allow": seed_block_variant_allow,
         "seed_allow_variant_block": seed_allow_variant_block,
         "discordant_pairs": discordant,
-        "mcnemar_exact_p": round(exact_mcnemar_p_value(seed_block_variant_allow, seed_allow_variant_block), 12),
+        "mcnemar_exact_p": compact_p_value(exact_p),
         "mcnemar_chi_square_cc": round(mcnemar_chi_square(seed_block_variant_allow, seed_allow_variant_block), 6),
         "odds_ratio_discordant": (
             round(seed_block_variant_allow / seed_allow_variant_block, 6)
             if seed_allow_variant_block
             else ("inf" if seed_block_variant_allow else "")
         ),
-        "significant_0_05": exact_mcnemar_p_value(seed_block_variant_allow, seed_allow_variant_block) < 0.05,
+        "significant_0_05": exact_p < 0.05,
     }
     for field, value in zip(fields, name):
         summary[field] = value
@@ -147,6 +152,42 @@ def summarize_pairs(pairs: list[dict[str, object]], group_fields: list[str]) -> 
     )
 
 
+def add_multiple_testing_corrections(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    if not rows:
+        return rows
+    indexed = [
+        (idx, float(row["mcnemar_exact_p"]))
+        for idx, row in enumerate(rows)
+    ]
+    m = len(indexed)
+
+    holm_adjusted = [1.0] * m
+    running = 0.0
+    for rank, (idx, p_value) in enumerate(sorted(indexed, key=lambda item: item[1]), start=1):
+        adjusted = min(1.0, (m - rank + 1) * p_value)
+        running = max(running, adjusted)
+        holm_adjusted[idx] = running
+
+    bh_adjusted = [1.0] * m
+    running_bh = 1.0
+    for rank, (idx, p_value) in reversed(
+        list(enumerate(sorted(indexed, key=lambda item: item[1]), start=1))
+    ):
+        adjusted = min(running_bh, (m / rank) * p_value)
+        running_bh = adjusted
+        bh_adjusted[idx] = min(1.0, adjusted)
+
+    corrected: list[dict[str, object]] = []
+    for idx, row in enumerate(rows):
+        out = dict(row)
+        out["holm_p"] = compact_p_value(holm_adjusted[idx])
+        out["holm_significant_0_05"] = holm_adjusted[idx] < 0.05
+        out["bh_p"] = compact_p_value(bh_adjusted[idx])
+        out["bh_significant_0_05"] = bh_adjusted[idx] < 0.05
+        corrected.append(out)
+    return corrected
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute McNemar paired significance tables.")
     parser.add_argument("--seed-results", type=Path, default=RAW_RESULTS_DIR / "seed_baseline_results.jsonl")
@@ -160,8 +201,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     pairs = build_pairs(load_jsonl(args.seed_results), load_jsonl(args.variant_results))
-    overall = summarize_pairs(pairs, ["guardrail"])
-    by_smr = summarize_pairs(pairs, ["guardrail", "smr"])
+    overall = add_multiple_testing_corrections(summarize_pairs(pairs, ["guardrail"]))
+    by_smr = add_multiple_testing_corrections(summarize_pairs(pairs, ["guardrail", "smr"]))
     fields = [
         "guardrail",
         "smr",
@@ -175,6 +216,10 @@ def main() -> None:
         "mcnemar_chi_square_cc",
         "odds_ratio_discordant",
         "significant_0_05",
+        "holm_p",
+        "holm_significant_0_05",
+        "bh_p",
+        "bh_significant_0_05",
     ]
     overall_fields = [field for field in fields if field != "smr"]
     pair_fields = [

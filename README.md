@@ -75,15 +75,16 @@ This writes the paper-facing sanity table to `..\smr-paper\tables\baseline.csv`.
 
 ## Phase 4 Access-Control Mini-App
 
-Phase 4 provides the SMR-5 role-differential mini-app and smoke scenarios:
+Phase 4 provides the SMR-5 role-differential mini-app and access-control scenarios:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python src\smoke_access_app.py --limit 3
+python src\smoke_access_app.py
 python src\make_phase4_artifacts.py
 ```
 
-The smoke run writes `..\smr-paper\tables\access_control_smoke.csv`; the paper example is saved as `..\smr-paper\figures\access_control_example.png`.
+The limited command is for a quick smoke check. The full command writes the expanded access-control table to `..\smr-paper\tables\access_control_smoke.csv` and summary to `..\smr-paper\tables\access_control_summary.csv`; the paper example is saved as `..\smr-paper\figures\access_control_example.png`.
 
 ## Phase 5 Experiment Runner
 
@@ -117,6 +118,14 @@ python src\metrics.py --input results\raw\results.jsonl --variants data\variants
 
 The headline paper table is `..\smr-paper\tables\msir_by_guardrail_smr.csv`.
 
+To compute agreement after a second human annotator returns a completed validation CSV:
+
+```powershell
+python src\compute_second_annotator_agreement.py --completed ..\smr-paper\tables\human_validation_second_annotator_completed.csv
+```
+
+This writes `..\smr-paper\tables\second_annotator_agreement_summary.csv`.
+
 ## Phase 7 Figures
 
 Phase 7 regenerates all paper-facing figures and chart-support tables from saved Phase 6 outputs:
@@ -144,6 +153,19 @@ python src\make_figures.py --mitigated-tables-dir results\tables_mitigated
 ```
 
 The canonicalised variants and mitigated raw results are ignored because they are reproducible. The paper-facing before/after outputs are `..\smr-paper\figures\mitigation.png` and `..\smr-paper\tables\mitigation.csv`.
+
+For the deterministic-only canonicalization ablation:
+
+```powershell
+python src\canonicalize.py --mode full --skip-translation --output data\variants\variants_canonicalized_deterministic.jsonl --summary data\variants\canonicalization_deterministic_summary.json --paper-summary ..\smr-paper\snapshots\phase8_canonicalization_deterministic_summary.json
+python src\reuse_identical_results.py --ablation-variants data\variants\variants_canonicalized_deterministic.jsonl --ablation-results results\raw\results_ablation_deterministic.jsonl
+python src\runner.py --variants data\variants\variants_canonicalized_deterministic.jsonl --output results\raw\results_ablation_deterministic.jsonl --summary-output results\raw\runner_ablation_deterministic_summary.json --paper-summary ..\smr-paper\snapshots\ablation_deterministic_runner_summary.json --paper-table ..\smr-paper\tables\runner_ablation_deterministic_summary.csv --workers 4
+python src\compute_mcnemar.py --seed-results results\raw\seed_baseline_results.jsonl --variant-results results\raw\results_ablation_deterministic.jsonl --output-dir results\tables_ablation_deterministic --paper-dir ..\smr-paper\tables\ablation_deterministic
+python src\metrics.py --input results\raw\results_ablation_deterministic.jsonl --variants data\variants\variants_canonicalized_deterministic.jsonl --output-dir results\tables_ablation_deterministic --paper-dir ..\smr-paper\tables\ablation_deterministic --bootstrap-iterations 2000
+python src\make_ablation_summary.py
+```
+
+`reuse_identical_results.py` copies baseline verdicts only when the ablation input text is exactly identical to the original variant text, avoiding unnecessary reruns without changing the evaluated input.
 
 ## Phase 9 Reproducibility Gate
 
