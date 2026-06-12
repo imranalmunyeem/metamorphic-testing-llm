@@ -30,6 +30,7 @@ REQUIRED_ARTIFACTS = [
     ("Access-control leak example", "figures/access_control_example.png", "figure"),
     ("Before/after mitigation figure", "figures/mitigation.png", "figure"),
     ("Before/after mitigation table", "tables/mitigation.csv", "table"),
+    ("Canonicalization component exposure", "tables/canonicalization_component_actions.csv", "table"),
     ("Experiment runtime and cost summary", "tables/experiment_runtime_cost_summary.csv", "table"),
     ("Experiment platform summary", "tables/experiment_platform.csv", "table"),
     ("Results snapshot", "snapshots/run_snapshot.json", "snapshot"),
