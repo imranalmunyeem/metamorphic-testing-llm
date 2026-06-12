@@ -25,7 +25,7 @@ REQUIRED_ARTIFACTS = [
     ("Defense-gap plot", "figures/defense_gap.png", "figure"),
     ("Per-language/encoding breakdown", "figures/transform_breakdown.png", "figure"),
     ("Metamorphic-vs-flat baseline comparison", "figures/wedge_comparison.png", "figure"),
-    ("McNemar significance + kappa summary", "tables/stats_summary.csv", "table"),
+    ("McNemar significance + human validation summary", "tables/stats_summary.csv", "table"),
     ("McNemar paired baseline summary", "tables/mcnemar_summary.csv", "table"),
     ("Access-control leak example", "figures/access_control_example.png", "figure"),
     ("Before/after mitigation figure", "figures/mitigation.png", "figure"),
