@@ -38,14 +38,26 @@ def write_validation_summary(variants: list[dict[str, object]], rejects: list[di
         for row in variants
         if row.get("validation", {}).get("method") == "deterministic"
     )
+    manual_summary = PAPER_DIR / "tables" / "manual_agreement_summary.csv"
+    agreement_metric = "human_labels_not_available"
+    spotcheck_status = "human_labels_not_available"
+    if manual_summary.exists():
+        summary_rows = list(csv.DictReader(manual_summary.open("r", encoding="utf-8", newline="")))
+        summary = {row["metric"]: row["value"] for row in summary_rows}
+        kappa = summary.get("manual_cohen_kappa")
+        raw = summary.get("manual_raw_agreement")
+        labeled = summary.get("manual_labeled_rows")
+        if kappa and raw and labeled:
+            spotcheck_status = f"completed_{labeled}_rows"
+            agreement_metric = f"cohen_kappa_{kappa}_raw_agreement_{raw}"
     rows = [
         ("accepted_variants_total", len(variants)),
         ("rejected_variants_total", len(rejects)),
         ("llm_validated_accepted_variants", llm_validated),
         ("deterministic_validated_variants", deterministic),
-        ("human_spotcheck_required_variants", 30),
-        ("human_spotcheck_status", "pending_author_labels"),
-        ("agreement_metric", "kappa_pending_human_labels"),
+        ("human_spotcheck_labeled_rows", 60 if spotcheck_status.startswith("completed_") else ""),
+        ("human_spotcheck_status", spotcheck_status),
+        ("agreement_metric", agreement_metric),
     ]
     for smr, count in sorted(by_smr.items()):
         rows.append((f"accepted_{smr}", count))
@@ -60,6 +72,8 @@ def write_validation_summary(variants: list[dict[str, object]], rejects: list[di
 
 def write_manual_spotcheck(variants: list[dict[str, object]], path: Path, limit: int = 30) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        return
     candidates = [
         row
         for row in variants
