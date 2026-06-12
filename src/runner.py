@@ -15,7 +15,9 @@ from pathlib import Path
 from threading import Lock
 from typing import Iterable
 
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+from dotenv import load_dotenv
+from openai import OpenAI
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential_jitter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -25,6 +27,7 @@ from config import (  # noqa: E402
     LLM_REPETITIONS,
     MAX_RUN_USD,
     OPENAI_JUDGE_MODEL,
+    OPENAI_MODERATION_MODEL,
     PAPER_DIR,
     RAW_RESULTS_DIR,
     VARIANT_DIR,
@@ -140,6 +143,92 @@ def run_task(adapter, task: Task) -> dict[str, object]:
     }
 
 
+@retry(wait=wait_exponential_jitter(initial=1, max=60), stop=stop_after_attempt(8))
+def call_moderation_batch(client: OpenAI, texts: list[str]):
+    return client.moderations.create(model=OPENAI_MODERATION_MODEL, input=texts)
+
+
+def run_moderation_batch(tasks: list[Task]) -> list[dict[str, object]]:
+    load_dotenv(dotenv_path=Path(".env"))
+    client = OpenAI()
+    started = time.perf_counter()
+    response = call_moderation_batch(client, [str(task.variant["text"]) for task in tasks])
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
+    rows: list[dict[str, object]] = []
+    for task, result in zip(tasks, response.results):
+        raw = result.model_dump(mode="json")
+        category_scores = raw.get("category_scores", {})
+        max_score = max((float(score) for score in category_scores.values()), default=0.0)
+        rows.append(
+            {
+                "seed_id": task.variant.get("seed_id"),
+                "smr": task.variant.get("smr"),
+                "variant_id": task.variant.get("variant_id"),
+                "transformation": task.variant.get("transformation"),
+                "relation_type": task.variant.get("relation_type"),
+                "guardrail": task.guardrail,
+                "repetition": task.repetition,
+                "blocked": bool(raw.get("flagged")),
+                "score": max(0.0, min(1.0, max_score)),
+                "latency_ms": elapsed_ms,
+                "runner_elapsed_ms": elapsed_ms,
+                "owasp_category": task.variant.get("owasp_category"),
+                "raw": {
+                    "model": OPENAI_MODERATION_MODEL,
+                    "flagged": raw.get("flagged"),
+                    "categories": raw.get("categories", {}),
+                    "max_category_score": max_score,
+                    "batch_size": len(tasks),
+                },
+                "timestamp_unix": time.time(),
+            }
+        )
+    return rows
+
+
+def run_openai_moderation_tasks(
+    tasks: list[Task],
+    output: Path,
+    write_lock: Lock,
+    max_results_remaining: int | None,
+    batch_size: int,
+    batch_sleep_seconds: float,
+    rate_limit_cooldown_seconds: float,
+    max_rate_limit_stalls: int,
+) -> int:
+    if max_results_remaining is not None:
+        tasks = tasks[:max_results_remaining]
+    completed = 0
+    stalls = 0
+    index = 0
+    while index < len(tasks):
+        batch = tasks[index : index + batch_size]
+        try:
+            rows = run_moderation_batch(batch)
+        except RetryError as exc:
+            stalls += 1
+            print(
+                "openai_moderation_rate_limit="
+                f"{stalls}/{max_rate_limit_stalls} "
+                f"cooldown_seconds={rate_limit_cooldown_seconds} error={exc}"
+            )
+            if stalls >= max_rate_limit_stalls:
+                print("openai_moderation_stalled=true")
+                break
+            time.sleep(rate_limit_cooldown_seconds)
+            continue
+
+        stalls = 0
+        for row in rows:
+            append_jsonl(output, row, write_lock)
+            completed += 1
+        print(f"openai_moderation_completed={completed}/{len(tasks)}")
+        index += batch_size
+        if batch_sleep_seconds > 0 and completed < len(tasks):
+            time.sleep(batch_sleep_seconds)
+    return completed
+
+
 def run_guardrail_tasks(
     guardrail: str,
     tasks: list[Task],
@@ -147,9 +236,25 @@ def run_guardrail_tasks(
     write_lock: Lock,
     max_workers: int,
     max_results_remaining: int | None,
+    moderation_batch_size: int,
+    moderation_sleep_seconds: float,
+    moderation_rate_limit_cooldown_seconds: float,
+    moderation_max_rate_limit_stalls: int,
 ) -> int:
     if not tasks:
         return 0
+
+    if guardrail == "openai_moderation":
+        return run_openai_moderation_tasks(
+            tasks,
+            output,
+            write_lock,
+            max_results_remaining=max_results_remaining,
+            batch_size=moderation_batch_size,
+            batch_sleep_seconds=moderation_sleep_seconds,
+            rate_limit_cooldown_seconds=moderation_rate_limit_cooldown_seconds,
+            max_rate_limit_stalls=moderation_max_rate_limit_stalls,
+        )
 
     adapter = load_guardrail(guardrail)
     completed = 0
@@ -231,6 +336,10 @@ def write_summary(summary: dict[str, object], json_path: Path, csv_path: Path) -
         writer.writerow(["elapsed_seconds", summary["elapsed_seconds"]])
         for guardrail, count in summary["by_guardrail"].items():
             writer.writerow([f"results_{guardrail}", count])
+        for guardrail, count in summary.get("expected_by_guardrail", {}).items():
+            writer.writerow([f"expected_{guardrail}", count])
+        for guardrail, count in summary.get("missing_by_guardrail", {}).items():
+            writer.writerow([f"missing_{guardrail}", count])
         for guardrail, count in summary["blocked_by_guardrail"].items():
             writer.writerow([f"blocked_{guardrail}", count])
         for guardrail, latency in summary["mean_latency_ms_by_guardrail"].items():
@@ -254,6 +363,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-variants", type=int, default=None)
     parser.add_argument("--max-results", type=int, default=None)
     parser.add_argument("--workers", type=int, default=DEFAULT_CONCURRENCY)
+    parser.add_argument("--moderation-batch-size", type=int, default=64)
+    parser.add_argument("--moderation-sleep-seconds", type=float, default=30.0)
+    parser.add_argument("--moderation-rate-limit-cooldown-seconds", type=float, default=900.0)
+    parser.add_argument("--moderation-max-rate-limit-stalls", type=int, default=12)
     parser.add_argument("--estimate-only", action="store_true")
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
@@ -295,6 +408,10 @@ def main() -> None:
             write_lock,
             max_workers=args.workers,
             max_results_remaining=remaining,
+            moderation_batch_size=args.moderation_batch_size,
+            moderation_sleep_seconds=args.moderation_sleep_seconds,
+            moderation_rate_limit_cooldown_seconds=args.moderation_rate_limit_cooldown_seconds,
+            moderation_max_rate_limit_stalls=args.moderation_max_rate_limit_stalls,
         )
         completed_this_run += completed
         if args.max_results is not None and completed_this_run >= args.max_results:
@@ -303,11 +420,23 @@ def main() -> None:
 
     results = load_jsonl(args.output)
     summary = summarize_results(results, started, args.output)
+    summary["expected_by_guardrail"] = {
+        guardrail: len(variants) * repetitions
+        for guardrail, repetitions in sorted(REPETITIONS.items())
+    }
+    summary["missing_by_guardrail"] = {
+        guardrail: max(0, expected - int(summary["by_guardrail"].get(guardrail, 0)))
+        for guardrail, expected in summary["expected_by_guardrail"].items()
+    }
     summary["cost_estimate"] = estimate
     summary["run_parameters"] = {
         "variant_count": len(variants),
         "guardrails": guardrails,
         "workers": args.workers,
+        "moderation_batch_size": args.moderation_batch_size,
+        "moderation_sleep_seconds": args.moderation_sleep_seconds,
+        "moderation_rate_limit_cooldown_seconds": args.moderation_rate_limit_cooldown_seconds,
+        "moderation_max_rate_limit_stalls": args.moderation_max_rate_limit_stalls,
         "max_results": args.max_results,
         "completed_this_run": completed_this_run,
         "pending_at_start": total_planned,
