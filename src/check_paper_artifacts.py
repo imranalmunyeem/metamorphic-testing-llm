@@ -35,6 +35,7 @@ REQUIRED_ARTIFACTS = [
     ("Experiment platform summary", "tables/experiment_platform.csv", "table"),
     ("Results snapshot", "snapshots/run_snapshot.json", "snapshot"),
     ("Related-work positioning", "related_work.md", "paper_table"),
+    ("Reference expansion notes", "draft/reference_expansion_notes.md", "paper_table"),
 ]
 
 REQUIRED_CODE_ARTIFACTS = [
