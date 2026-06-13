@@ -39,11 +39,7 @@ This is different from ordinary block rate or miss rate. A guardrail can have a 
 
 ![Flat detection vs metamorphic consistency](docs/assets/wedge_comparison.png)
 
-## When This Snapshot Was Produced
-
-The current experiment and paper snapshot were finalized in June 2026.
-
-The paper-facing run snapshot was refreshed on **2026-06-12 at 11:42:01 UTC** after completing:
+## What Snapshot Was Produced
 
 - baseline guardrail evaluation,
 - mitigated guardrail evaluation,
